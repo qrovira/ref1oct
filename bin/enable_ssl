@@ -1,0 +1,58 @@
+#!/bin/bash
+#
+
+cat << EOC  > /tmp/default.conf
+# Default HTTP to just redirect to HTTPS
+server {
+    server_name _;
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    return 301 https://\$host\$request_uri;
+}
+
+EOC
+
+count=0
+
+echo "By using this script, you agree to Let's Encrypt terms of service:"
+echo "You can check them on https://letsencrypt.org/"
+
+for subdomain in $@; do
+    if certbot certonly --webroot -w /var/www/html -d $subdomain -n -m ssl@$subdomain --agree-tos >> /dev/null; then
+        echo "[ OK ] Got a Let's Encrypt SSL certificate for $subdomain"
+
+        cat << EOC >> /tmp/default.conf
+server {
+	server_name $subdomain;
+	listen 443 ssl;
+	listen [::]:443 ssl;
+	ssl_certificate /etc/letsencrypt/live/$subdomain/fullchain.pem;
+	ssl_certificate_key /etc/letsencrypt/live/$subdomain/privkey.pem;
+	add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+	root /var/www/html;
+	index index.html;
+	location / {
+		try_files \$uri \$uri/ =404;
+	}
+}
+
+EOC
+    else
+        echo "[FAIL] Cannot get a let's encrypt certificate for $subdomain"
+        exit 1
+    fi
+
+    count=$(($count + 1))
+done
+
+if [[ $count -eq 0 ]]; then 
+    echo "[FAIL] No SSL subdomains passed?"
+    exit 1
+fi
+
+echo "[ OK ] Correctlty set up $count subdomains.. swapping nginx configuration and reloading"
+
+mv /tmp/default.conf /etc/nginx/conf.d/default.conf
+
+service nginx reload
+

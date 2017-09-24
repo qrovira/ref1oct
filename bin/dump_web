@@ -1,0 +1,171 @@
+#!/usr/bin/env perl 
+
+use strict;
+use warnings;
+use 5.014;
+
+use Getopt::Long;
+use Mojo::UserAgent;
+use File::Path qw/ make_path /;
+use File::Spec;
+
+GetOptions(
+    'help|h'          => \(my $HELP),
+    'dest|d=s'        => \(my $DEST = '/var/www/html'),
+    'src|s=s'         => \(my $SRC = 'https://onvotar.garantiespelreferendum.com'),
+    'connections|n=i' => \(my $CONNECTIONS = 10),
+    'verbose|v+'      => \(my $VERBOSE = 0),
+    'timeout|t=i'     => \(my $TIMEOUT = 5),
+);
+
+if( $HELP ) {
+    print <<"EOH";
+Usage: $0 [--dest path/to/destination] [--src https://onvotar.garantiespelreferendum.com]
+Options:
+    --dest
+    --src
+    --connections, -n  Number of parallel requests
+EOH
+    exit 1;
+}
+
+my $ua = Mojo::UserAgent->new;
+my @stack = ($SRC."/index.html");
+my %seen = ();
+my $running = 0;
+my $ticks = 0;
+my $ok = 0;
+my $fail = 0;
+
+sub check_stalled {
+    say "[CHECK] Activity check: $ticks ticks"
+        if $VERBOSE;
+
+    unless( $ticks ) {
+        say "[END] Stopping scrap with $running running connections";
+        Mojo::IOLoop->stop();
+        return;
+    }
+    $ticks = 0;
+    Mojo::IOLoop->timer($TIMEOUT, \&check_stalled);
+}
+
+Mojo::IOLoop->timer($TIMEOUT, \&check_stalled);
+
+sub process_response {
+	my ($ua, $tx) = @_;
+    my $res = $tx->result;
+    my $url = $tx->req->url;
+
+    $running--;
+    $ticks++;
+
+    if( $res->is_success ) {
+        my $rel = $url;
+
+        $rel = "$rel/index.html"
+            if $rel =~ m#\/$#;
+
+        unless( $rel =~ s#^$SRC/## ) {
+            say "External url retrieved: $rel. Redirected?";
+            return;
+        }
+
+        my ($vol, $path, $file) = File::Spec->splitpath($rel);
+        my $base = $url;
+        $base =~ s#$file$##;
+
+        # Store file
+        make_path("$DEST/$path") unless -d "$DEST/$path";
+        open my $fh, '>', "$DEST/$path$file"
+            or die "Cannoy open $DEST/$path$file: $!";
+		print $fh $res->body;
+		close $fh;
+
+        $ok++;
+
+        # Scrap HTML documents
+        if( $res->headers->content_type =~ m#html# ) {
+            my $dom = $res->dom;
+            enqueue_links(
+                $base,
+                $dom->find('a')->map(sub { $_->attr("href")})->each,
+                $dom->find('link')->map(sub { $_->attr("href")})->each,
+                $dom->find('script')->map(sub { $_->attr("src")})->each,
+                $dom->find('img')->map(sub { $_->attr("src")})->each,
+            );
+        } elsif( $res->headers->content_type =~ m#css# ) {
+            enqueue_links(
+                $base,
+                $res->body =~ m#url\(([^\(]+)\)#g
+            );
+        }
+
+        say "[DONE] $url";
+    } else {
+        say "[FAIL] $url";
+        $fail++;
+    }
+
+    request_next();
+}
+
+sub request_next {
+    my ($dir, $file);
+
+    while( $running < $CONNECTIONS && @stack ) {
+        my $next = shift @stack;
+
+        say "[SCRAP] $next"
+            if $VERBOSE;
+
+        $ua->get($next => { 'User-Agent' => 'Importacio de dades per a mirrors' } => \&process_response);
+
+        $running++;
+    }
+}
+
+sub enqueue_links {
+    my ($base, @links) = @_;
+
+    push @stack, grep {
+        # Not previously seen (and flag it now)
+        !$seen{$_}++
+    } map {
+        # Yes, at least one url comes quoted T.T
+        $_ =~ s#^['"](.*)['"]#$1#;
+        # Relative paths with '.' seem to be broken
+        $_ =~ s#^\.\/#\/#;
+        # Make absolute
+        $_ = "$SRC$_" if $_ =~ m#^\/#;
+        $_ = "$base$_" unless $_ =~ m#^https?://#;
+        # Kill query strings.. this should break most sites, but this one is suspiciously cooperative :shrug:
+        $_ =~ s#\?.*$##;
+        # Kill anchors too
+        $_ =~ s/#.*$//;
+        # Collapse relative paths
+        $_ =~ s#/[^/\.]+/\.\./#/#g while( $_ =~ m#/[^/\.]+/\.\./# );
+        # Return
+        $_;
+    } grep {
+        # Tags missing attributes
+        defined $_ &&
+        # Unwanted protos or javascript hrefs
+        $_ !~ m#^(mailto|javascript):# &&
+        # Unwanted anchors
+        $_ !~ m/^#/ &&
+        # Absolute (external) URLs
+        !( $_ =~ m#^[a-z]+:# && $_ !~ m#$SRC# )
+    } @links;
+}
+
+$|=1;
+
+say "Going to scrap starting from $SRC...";
+
+request_next();
+
+Mojo::IOLoop->start;
+
+say "Finished!";
+say "Scrapped a total of @{[ scalar( keys %seen ) ]} ($ok ok, $fail fail) pages";

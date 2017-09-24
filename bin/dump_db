@@ -1,0 +1,108 @@
+#!/usr/bin/env perl 
+
+use strict;
+use warnings;
+use 5.014;
+
+use Getopt::Long;
+use Mojo::UserAgent;
+use File::Path qw/ make_path /;
+
+GetOptions(
+    'help|h'          => \(my $HELP),
+    'dest|d=s'        => \(my $DEST = '/var/www/html/db'),
+    'src|s=s'         => \(my $SRC = 'https://onvotar.garantiespelreferendum.com/db'),
+    'dirsha|D=i'      => \(my $DIRSHA = 2),
+    'filesha|F=i'     => \(my $FILESHA = 2),
+    'from|f=i'        => \(my $next = 0),
+    'until|u=i'       => \(my $last),
+    'connections|n=i' => \(my $CONNECTIONS = 10),
+    'missing'         => \(my $MISSING),
+    'timeout|t=i'     => \(my $TIMEOUT = 5),
+);
+
+if( $HELP ) {
+    print <<"EOH";
+Usage: $0 [--dest path/to/destination] [--src https://onvotar.garantiespelreferendum.com/db]
+Options:
+    --dest
+    --src
+    --dirsha           (default 2)
+    --filesha          (default 2)
+    --from             Start index
+    --until            Stop index
+    --connections, -n  Number of parallel requests
+EOH
+    exit 1;
+}
+
+my $ua = Mojo::UserAgent->new;
+my $ticks = 0;
+
+$last = (1 << ($DIRSHA+$FILESHA)*4) - 1
+    unless defined $last;
+
+sub check_stalled {
+    unless( $ticks ) {
+        Mojo::IOLoop->stop();
+        return;
+    }
+    $ticks = 0;
+    Mojo::IOLoop->timer($TIMEOUT, \&check_stalled);
+}
+
+Mojo::IOLoop->timer($TIMEOUT, \&check_stalled);
+
+sub process_response {
+	my ($ua, $tx) = @_;
+    my $res = $tx->result;
+	my ($dir,$file) = $tx->req->url =~ m#/([0-9a-f]+)/([0-9a-f]+)\.db$#;
+
+    if( $res->is_success ) {
+        make_path "$DEST/$dir" unless -d "$DEST/$dir";
+        open my $fh, '>', "$DEST/$dir/$file.db";
+		print $fh $res->body;
+		close $fh;
+        print ".";
+    } else {
+        #say STDERR "Failed to retrieve $dir/$file.db";
+        print "*";
+    }
+
+    $ticks++;
+
+    request_next();
+}
+
+sub request_next {
+    my ($dir, $file);
+
+    do {
+        my $this = $next++;
+
+        return if $this > $last;
+
+        ($dir,$file) = sprintf('%0'.($DIRSHA+$FILESHA).'x',$this) =~ m#^(.{$DIRSHA})(.{$FILESHA})$#;
+
+        print "\nProcesing dir $dir..."
+            if( $file eq '00' );
+
+        if( $MISSING && -e "$DEST/$dir/$file.db" ) {
+            print "o";
+            $dir = $file = undef;
+        }
+    } while( !defined $dir && !defined $file );
+
+    $ua->get("$SRC/$dir/$file.db" => { 'User-Agent' => 'Importacio de dades per a mirrors' } => \&process_response);
+}
+
+$|=1;
+
+say "Going to scrap from $next until $last, using $CONNECTIONS connections in parallel.";
+
+request_next()
+    foreach( 0..$CONNECTIONS );
+
+Mojo::IOLoop->start;
+
+say "Finished!";

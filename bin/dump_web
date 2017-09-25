@@ -30,7 +30,9 @@ EOH
 }
 
 my $ua = Mojo::UserAgent->new;
-my @stack = ($SRC."/index.html");
+$SRC = "$SRC/" if $SRC =~ m#^https?://[^/]+$#;
+
+my @stack = ($SRC);
 my %seen = ();
 my $running = 0;
 my $ticks = 0;
@@ -66,7 +68,7 @@ sub process_response {
         $rel = "$rel/index.html"
             if $rel =~ m#\/$#;
 
-        unless( $rel =~ s#^$SRC/## ) {
+        unless( $rel =~ s#^$SRC## ) {
             say "External url retrieved: $rel. Redirected?";
             return;
         }

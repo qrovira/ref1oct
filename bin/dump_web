@@ -103,7 +103,7 @@ sub process_response {
 
         say "[DONE] $url";
     } else {
-        say "[FAIL] $url";
+        say "[FAIL] $url (status ".$res->code.")";
         $fail++;
     }
 

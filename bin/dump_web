@@ -29,30 +29,18 @@ EOH
     exit 1;
 }
 
-my $ua = Mojo::UserAgent->new;
 $SRC = "$SRC/" if $SRC =~ m#^https?://[^/]+$#;
 
 my @stack = ($SRC);
 my %seen = ();
 my $running = 0;
-my $ticks = 0;
 my $ok = 0;
 my $fail = 0;
 
-sub check_stalled {
-    say "[CHECK] Activity check: $ticks ticks"
-        if $VERBOSE;
-
-    unless( $ticks ) {
-        say "[END] Stopping scrap with $running running connections";
-        Mojo::IOLoop->stop();
-        return;
-    }
-    $ticks = 0;
-    Mojo::IOLoop->timer($TIMEOUT, \&check_stalled);
-}
-
-Mojo::IOLoop->timer($TIMEOUT, \&check_stalled);
+my $ua = Mojo::UserAgent->new
+    ->request_timeout($TIMEOUT)
+    ->connect_timeout($TIMEOUT)
+    ->inactivity_timeout(1);
 
 sub process_response {
 	my ($ua, $tx) = @_;
@@ -60,7 +48,6 @@ sub process_response {
     my $url = $tx->req->url;
 
     $running--;
-    $ticks++;
 
     if( $res->is_success ) {
         my $rel = $url;

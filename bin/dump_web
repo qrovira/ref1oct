@@ -79,12 +79,13 @@ sub process_response {
         my $hash = sha256_hex( $res->body );
         $hashes{ "$path$file" } = $hash;
         say "[HASH] $hash $url"
-            if $VERBOSE;
+            if $VERBOSE || $ONLY_HASH;
 
         $ok++;
 
         # Scrap HTML documents
-        if( $res->headers->content_type =~ m#html# ) {
+        $content_type = $res->headers->content_type || 'text/plain';
+        if( $content_type =~ m#html# ) {
             my $dom = $res->dom;
             enqueue_links(
                 $base,
@@ -93,7 +94,7 @@ sub process_response {
                 $dom->find('script')->map(sub { $_->attr("src")})->each,
                 $dom->find('img')->map(sub { $_->attr("src")})->each,
             );
-        } elsif( $res->headers->content_type =~ m#css# ) {
+        } elsif( $content_type =~ m#css# ) {
             enqueue_links(
                 $base,
                 $res->body =~ m#url\(([^\(]+)\)#g
@@ -168,6 +169,7 @@ Mojo::IOLoop->start;
 
 my $manifest = join "\n", map "$hashes{$_}:$_", sort { $a cmp $b } keys %hashes;
 my $mhash = sha256_hex( $manifest );
+make_path("$DEST") unless -d "$DEST";
 open my $fh, '>', "$DEST/manifest.sha"
     or die "Failed to open manifest file for writing: $!";
 print $fh $mhash."\n".$manifest;

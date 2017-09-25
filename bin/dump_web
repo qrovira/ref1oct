@@ -8,6 +8,7 @@ use Getopt::Long;
 use Mojo::UserAgent;
 use File::Path qw/ make_path /;
 use File::Spec;
+use Digest::SHA qw/ sha256_hex /;
 
 GetOptions(
     'help|h'          => \(my $HELP),
@@ -16,6 +17,7 @@ GetOptions(
     'connections|n=i' => \(my $CONNECTIONS = 10),
     'verbose|v+'      => \(my $VERBOSE = 0),
     'timeout|t=i'     => \(my $TIMEOUT = 5),
+    'only-hash|H'     => \(my $ONLY_HASH = 0),
 );
 
 if( $HELP ) {
@@ -29,10 +31,9 @@ EOH
     exit 1;
 }
 
-$SRC = "$SRC/" if $SRC =~ m#^https?://[^/]+$#;
-
-my @stack = ($SRC);
+my @stack = ();
 my %seen = ();
+my %hashes = ();
 my $running = 0;
 my $ok = 0;
 my $fail = 0;
@@ -64,12 +65,21 @@ sub process_response {
         my $base = $url;
         $base =~ s#$file$##;
 
-        # Store file
-        make_path("$DEST/$path") unless -d "$DEST/$path";
-        open my $fh, '>', "$DEST/$path$file"
-            or die "Cannoy open $DEST/$path$file: $!";
-		print $fh $res->body;
-		close $fh;
+        unless( $ONLY_HASH ) {
+            # Store file
+            make_path("$DEST/$path") unless -d "$DEST/$path";
+            open my $fh, '>', "$DEST/$path$file"
+                or die "Cannoy open $DEST/$path$file: $!";
+            print $fh $res->body;
+            close $fh;
+            say "[DONE] $url";
+        }
+
+        # Hash and store
+        my $hash = sha256_hex( $res->body );
+        $hashes{ "$path$file" } = $hash;
+        say "[HASH] $hash $url"
+            if $VERBOSE;
 
         $ok++;
 
@@ -90,7 +100,6 @@ sub process_response {
             );
         }
 
-        say "[DONE] $url";
     } else {
         say "[FAIL] $url (status ".$res->code.")";
         $fail++;
@@ -126,7 +135,7 @@ sub enqueue_links {
         # Relative paths with '.' seem to be broken
         $_ =~ s#^\.\/#\/#;
         # Make absolute
-        $_ = "$SRC$_" if $_ =~ m#^\/#;
+        $_ = $SRC.substr($_,1) if $_ =~ m#^\/#;
         $_ = "$base$_" unless $_ =~ m#^https?://#;
         # Kill query strings.. this should break most sites, but this one is suspiciously cooperative :shrug:
         $_ =~ s#\?.*$##;
@@ -150,11 +159,24 @@ sub enqueue_links {
 
 $|=1;
 
+$SRC = "$SRC/" if $SRC =~ m#^https?://[^/]+$#;
+
 say "Going to scrap starting from $SRC...";
-
+push @stack, $SRC;
 request_next();
-
 Mojo::IOLoop->start;
 
-say "Finished!";
+my $manifest = join "\n", map "$hashes{$_}:$_", sort { $a cmp $b } keys %hashes;
+my $mhash = sha256_hex( $manifest );
+open my $fh, '>', "$DEST/manifest.sha"
+    or die "Failed to open manifest file for writing: $!";
+print $fh $mhash."\n".$manifest;
+close $fh;
+say "Scrap hash: $mhash";
+say "Stored manifest as: $DEST/manifest.sha";
+
 say "Scrapped a total of @{[ scalar( keys %seen ) ]} ($ok ok, $fail fail) pages";
+
+say "Finished!";
+
+

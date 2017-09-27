@@ -1,0 +1,62 @@
+#!/usr/bin/env perl 
+
+use strict;
+use warnings;
+use 5.014;
+
+use Getopt::Long;
+
+use lib '.';
+use Cens;
+
+GetOptions(
+    'dni=s'       => \(my $DNI = ""),
+    'naixement=s' => \(my $DATA = ""),
+    'cp=s'        => \(my $CP = ""),
+    'help|h'      => \(my $HELP),
+    'db=s'        => \$Cens::DB,
+);
+
+$DNI = uc($DNI);
+$DNI =~ s#[^0-9A-Z]##g;
+unless( $DNI =~ m#^[0-9]{8}[A-Z]$# ) {
+    say "El DNI ha de ser en format 00000000R";
+    exit 1;
+}
+
+$DATA =~ s#[^0-9]##g;
+unless( $DATA =~ m#^[0-9]{8}$# ) {
+    say "La data de naixement ha de ser en format YYYY-MM-DD";
+    exit 1;
+}
+
+$CP =~ s#[^0-9]##g;
+unless( $CP =~ m#^[0-9]{5}$# ) {
+    say "El codi postal has de ser en format 00000";
+    exit 1;
+}
+
+
+if($HELP) {
+    say "Usage $0: --dni 00000000R --naixement YYYY-MM-DD --cp 08080";
+}
+
+my $entrada = Cens::fetch( $DNI, $DATA, $CP );
+
+unless( $entrada ) {
+    say "No s'ha trobat cap registre a la base de dades";
+    exit 1;
+}
+
+say <<"EOF"
+Adreça:
+    $entrada->{adreca1}
+    $entrada->{adreca2}
+
+Població:  $entrada->{poblacio}
+Districte: $entrada->{districte}
+
+Secció: $entrada->{seccio}
+Mesa:   $entrada->{mesa}
+EOF
+

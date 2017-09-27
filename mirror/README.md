@@ -4,22 +4,6 @@ Catalunya 2017.
 
 ---
 
-The Spanish government is pushing the boundaries of human rights and freedom of
-speech through their actions against the govenment of Catalunya, and sadly this
-has also spread to the net.
-
-Several domains have been censored or blocked, in order to prevent the catalan
-government from spreading information about the referendum organization and the
-polling stations. They have even attacked staff from the foundation running the
-.cat TLD, as a mean to control some of the sites and mirrors with the
-information.
-
-This is **stupid** beyond measure, and an attack to both democratic values as
-well as right to access to information, so I decided to put together some
-duct tape to help spin off mirrors of the site. *Fuck fascism.*
-
----
-
 ## Instructions
 
 Starting a container should be quite straightforward:

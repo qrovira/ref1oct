@@ -64,5 +64,7 @@ Districte: $entrada->{districte}
 
 Secció: $entrada->{seccio}
 Mesa:   $entrada->{mesa}
+
+HM: $entrada->{hmmm}
 EOF
 

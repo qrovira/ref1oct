@@ -46,7 +46,6 @@ sub cerca {
         my $cipher = Crypt::Rijndael->new( $key, Crypt::Rijndael::MODE_CBC() );
         $cipher->set_iv($iv);
         my $decrypted = $cipher->decrypt(pack 'H*', $encrypted);
-        $decrypted =~ s/#[^#]+$//;
         my (@row) = split '#', $decrypted;
         return {
             adreca1   => $row[0],
@@ -55,6 +54,7 @@ sub cerca {
             districte => $row[3],
             seccio    => $row[4],
             mesa      => $row[5],
+            hmmm      => $row[6],
         };
     }
 

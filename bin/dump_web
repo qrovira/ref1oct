@@ -84,7 +84,7 @@ sub process_response {
         $ok++;
 
         # Scrap HTML documents
-        $content_type = $res->headers->content_type || 'text/plain';
+        my $content_type = $res->headers->content_type || 'text/plain';
         if( $content_type =~ m#html# ) {
             my $dom = $res->dom;
             enqueue_links(
@@ -97,7 +97,7 @@ sub process_response {
         } elsif( $content_type =~ m#css# ) {
             enqueue_links(
                 $base,
-                $res->body =~ m#url\(([^\(]+)\)#g
+                $res->body =~ m#url\(['"]\?([^\(]+)['"]?\)#g
             );
         }
 
@@ -131,19 +131,17 @@ sub enqueue_links {
         # Not previously seen (and flag it now)
         !$seen{$_}++
     } map {
-        # Yes, at least one url comes quoted T.T
-        $_ =~ s#^['"](.*)['"]#$1#;
         # Relative paths with '.' seem to be broken
         $_ =~ s#^\.\/#\/#;
         # Make absolute
         $_ = $SRC.substr($_,1) if $_ =~ m#^\/#;
         $_ = "$base$_" unless $_ =~ m#^https?://#;
+        # Collapse relative paths
+        $_ =~ s#/[^/\.]+/\.\./#/#g while( $_ =~ m#/[^/\.]+/\.\./# );
         # Kill query strings.. this should break most sites, but this one is suspiciously cooperative :shrug:
         $_ =~ s#\?.*$##;
         # Kill anchors too
         $_ =~ s/#.*$//;
-        # Collapse relative paths
-        $_ =~ s#/[^/\.]+/\.\./#/#g while( $_ =~ m#/[^/\.]+/\.\./# );
         # Return
         $_;
     } grep {

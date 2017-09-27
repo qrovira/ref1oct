@@ -11,7 +11,7 @@ use File::Path qw/ make_path /;
 GetOptions(
     'help|h'          => \(my $HELP),
     'dest|d=s'        => \(my $DEST = '/var/www/html/db'),
-    'src|s=s'         => \(my $SRC = 'https://onvotar.garantiespelreferendum.com/db'),
+    'src|s=s'         => \(my $SRC = 'https://onvotar.garantiespelreferendum.com/db.20170926/'),
     'dirsha|D=i'      => \(my $DIRSHA = 2),
     'filesha|F=i'     => \(my $FILESHA = 2),
     'from|f=i'        => \(my $next = 0),

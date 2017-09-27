@@ -5,17 +5,27 @@ use warnings;
 use 5.014;
 
 use Getopt::Long;
+use File::Spec;
+use FindBin;
 
-use lib '.';
+use lib $FindBin::Bin;
 use Cens;
 
 GetOptions(
-    'dni=s'       => \(my $DNI = ""),
-    'naixement=s' => \(my $DATA = ""),
-    'cp=s'        => \(my $CP = ""),
-    'help|h'      => \(my $HELP),
-    'db=s'        => \$Cens::DB,
+    'dni=s'  => \(my $DNI = ""),
+    'data=s' => \(my $DATA = ""),
+    'cp=s'   => \(my $CP = ""),
+    'help|h' => \(my $HELP),
+    'db=s'   => \(my $DB = "./db"),
 );
+
+if($HELP) {
+    say "Usage $0: --dni 00000000R --data YYYY-MM-DD --cp 08080";
+    exit 1;
+}
+
+my $cens = Cens->new( db => $DB )
+    or exit 1;
 
 $DNI = uc($DNI);
 $DNI =~ s#[^0-9A-Z]##g;
@@ -37,11 +47,7 @@ unless( $CP =~ m#^[0-9]{5}$# ) {
 }
 
 
-if($HELP) {
-    say "Usage $0: --dni 00000000R --naixement YYYY-MM-DD --cp 08080";
-}
-
-my $entrada = Cens::fetch( $DNI, $DATA, $CP );
+my $entrada = $cens->cerca( $DNI, $DATA, $CP );
 
 unless( $entrada ) {
     say "No s'ha trobat cap registre a la base de dades";

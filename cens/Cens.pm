@@ -9,10 +9,22 @@ use Digest::SHA qw/ sha256_hex /;
 use Digest::MD5 qw/ md5 /;
 use Crypt::Rijndael;
 
-our $DB = './db';
+sub new {
+    my ($proto, %args) = @_;
+    my $self = bless {}, ref($proto) || $proto;
 
-sub fetch {
-    my ($dni, $birth_date, $postcode) = @_;
+    unless( $args{db} && -d $args{db} ) {
+        say STDERR "Cal especificar un directori on trobar la base de dades del cens";
+        return undef;
+    }
+
+    $self->{db} = $args{db};
+
+    return $self;
+}
+
+sub cerca {
+    my ($self, $dni, $birth_date, $postcode) = @_;
     my $key = substr($dni, -6) . $birth_date . $postcode;
     my $pass = sha256_hex($key);
     $pass = sha256_hex($pass) foreach( 1.. 1714 ); # Bon cop de falç, cabró
@@ -21,7 +33,14 @@ sub fetch {
     my $file = substr($lookup,2,2);
     my $start = substr($lookup,4);
 
-    if( read_file("$DB/$path/$file.db") =~ m#^$start(.*)$#m ) {
+    unless( -r "$self->{db}/$path/$file.db" ) {
+        say STDERR "No s'ha pogut trobar l'arxiu $self->{db}/$path/$file.db. Habemus base de dades?";
+        return undef;
+    }
+
+    my $contingut = read_file("$self->{db}/$path/$file.db");
+
+    if( $contingut  =~ m#^$start(.*)$#m ) {
         my $encrypted = $1;
         my ($key, $iv) = ebtk( $pass );
         my $cipher = Crypt::Rijndael->new( $key, Crypt::Rijndael::MODE_CBC() );

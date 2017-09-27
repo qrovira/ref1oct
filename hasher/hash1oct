@@ -1,0 +1,67 @@
+#!/usr/bin/env perl 
+
+use strict;
+use warnings;
+use 5.014;
+
+use YAML qw/ LoadFile DumpFile /;
+use Getopt::Long;
+use Mojo::UserAgent;
+use File::Slurp;
+
+use lib '.';
+use Crawler;
+
+$|=1;
+
+GetOptions(
+    'help|h'          => \(my $HELP),
+    'connections|n=i' => \(my $CONNECTIONS = 10),
+    'timeout|t=i'     => \(my $TIMEOUT = 30),
+    'verbose|v+'      => \(my $VERBOSE = 0),
+    'site|s=s'        => \(my $SITE),
+    'profile|p=s'     => \(my $PROFILE = "web"),
+);
+
+if( $HELP ) {
+    say "Usage: $0 [--profile web|db]"
+    exit 1;
+}
+
+
+foreach my $site ($SITE // read_file("known_sites")) {
+    chomp $site;
+
+    my $crawler = Crawler->new
+        ->base_url($site)
+        ->profile($PROFILE)
+        ->timeout($TIMEOUT)
+        ->connections($CONNECTIONS);
+
+    say "[CRAWL] Processing site $site";
+
+    $crawler->crawl->wait;
+
+    say sprintf "[DONE] Crawled %s (%d ok, %d failed, checksum %s)",
+        $site, $crawler->ok, $crawler->failed, $crawler->checksum;
+
+    my $fname = $site;
+    $fname =~ s#[\.:/]#_#g;
+
+    DumpFile(
+        "data/$fname.$PROFILE.info",
+        {
+            checksum  => $crawler->checksum,
+            localtime => scalar(localtime),
+            ok        => $crawler->ok,
+            failed    => $crawler->failed,
+        }
+    );
+
+    open my $fh, '>', "data/$fname.$PROFILE.manifest"
+        or die "Failed to open $fname.$PROFILE.manifest for writing";
+    print $fh $crawler->manifest;
+    close $fh;
+}
+
+

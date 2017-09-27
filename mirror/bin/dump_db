@@ -17,7 +17,7 @@ GetOptions(
     'from|f=i'        => \(my $next = 0),
     'until|u=i'       => \(my $last),
     'connections|n=i' => \(my $CONNECTIONS = 10),
-    'missing'         => \(my $MISSING),
+    'overwrite'       => \(my $OVERWRITE),
     'timeout|t=i'     => \(my $TIMEOUT = 5),
 );
 
@@ -76,7 +76,7 @@ sub request_next {
         print "\nProcesing dir $dir..."
             if( $file eq '00' );
 
-        if( $MISSING && -e "$DEST/$dir/$file.db" ) {
+        if( -e "$DEST/$dir/$file.db" && !$OVERWRITE ) {
             print "o";
             $dir = $file = undef;
         }

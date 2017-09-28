@@ -97,7 +97,7 @@ sub process_response {
         } elsif( $content_type =~ m#css# ) {
             enqueue_links(
                 $base,
-                $res->body =~ m#url\(['"]?([^\(]+)['"]?\)#g
+                $res->body =~ m#url\(['"]?([^\(]+?)['"]?\)#g
             );
         }
 

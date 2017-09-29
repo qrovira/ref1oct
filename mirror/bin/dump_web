@@ -93,8 +93,9 @@ sub process_response {
                 my $reldest = $map{ $orig };
                 $reldest =~ s#^$SRC##;
 
-                say "[REMAP] $orig -> /$RELURL/$reldest";
-                $body =~ s#['"]?(?:$orig)["']?#/$RELURL/$reldest#;
+                say "[REMAP] $orig -> /$RELURL/$reldest"
+                       if $VERBOSE;
+                $body =~ s#((?:href=|src=|url\()['"])(?:\Q$orig\E)(["'])#$1/$RELURL/$reldest$2#g;
             }
         }
 

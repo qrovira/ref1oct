@@ -18,6 +18,7 @@ GetOptions(
     'verbose|v+'      => \(my $VERBOSE = 0),
     'timeout|t=i'     => \(my $TIMEOUT = 25),
     'only-hash|H'     => \(my $ONLY_HASH = 0),
+    'relurl=s'        => \(my $RELURL),
 );
 
 if( $HELP ) {
@@ -66,29 +67,14 @@ sub process_response {
         my $base = $url;
         $base =~ s#$file$##;
 
-        unless( $ONLY_HASH ) {
-            # Store file
-            make_path("$DEST/$path") unless -d "$DEST/$path";
-            open my $fh, '>', "$DEST/$path$file"
-                or die "Cannoy open $DEST/$path$file: $!";
-            print $fh $res->body;
-            close $fh;
-            say "[DONE] $url";
-        }
-
-        # Hash and store
-        my $hash = sha256_hex( $res->body );
-        $hashes{ "$path$file" } = $hash;
-        say "[HASH] $hash $url"
-            if $VERBOSE || $ONLY_HASH;
-
-        $ok++;
+        my $body = $res->body;
+        my %map;
 
         # Scrap HTML documents
         my $content_type = $res->headers->content_type || 'text/plain';
         if( $content_type =~ m#html# ) {
             my $dom = $res->dom;
-            enqueue_links(
+            %map = enqueue_links(
                 $base,
                 $dom->find('a')->map(sub { $_->attr("href")})->each,
                 $dom->find('link')->map(sub { $_->attr("href")})->each,
@@ -96,11 +82,41 @@ sub process_response {
                 $dom->find('img')->map(sub { $_->attr("src")})->each,
             );
         } elsif( $content_type =~ m#css# ) {
-            enqueue_links(
+            %map = enqueue_links(
                 $base,
                 $res->body =~ m#url\(['"]?([^\(]+?)['"]?\)#g
             );
         }
+
+        if( $RELURL ) {
+            foreach my $orig ( keys %map ) {
+                my $reldest = $map{ $orig };
+                $reldest =~ s#^$SRC##;
+
+                say "[REMAP] $orig -> /$RELURL/$reldest";
+                $body =~ s#['"]?(?:$orig)["']?#/$RELURL/$reldest#;
+            }
+        }
+
+        unless( $ONLY_HASH ) {
+            # Store file
+            make_path("$DEST/$path") unless -d "$DEST/$path";
+            open my $fh, '>', "$DEST/$path$file"
+                or die "Cannoy open $DEST/$path$file: $!";
+            print $fh $body;
+            close $fh;
+            say "[DONE] $url";
+        }
+
+        # Hash and store
+        # No la copia local, per integritat
+        my $hash = sha256_hex( $res->body );
+        $hashes{ "$path$file" } = $hash;
+        say "[HASH] $hash $url"
+            if $VERBOSE || $ONLY_HASH;
+
+        $ok++;
+
 
     } else {
         say "[FAIL] $url (status ".$res->code.")";
@@ -127,11 +143,13 @@ sub request_next {
 
 sub enqueue_links {
     my ($base, @links) = @_;
+    my %map;
 
     push @stack, grep {
         # Not previously seen (and flag it now)
         !$seen{$_}++
     } map {
+        my $orig = $_;
         # Relative paths with '.' seem to be broken
         $_ =~ s#^\.\/#\/#;
         # Make absolute
@@ -143,6 +161,8 @@ sub enqueue_links {
         $_ =~ s#\?.*$##;
         # Kill anchors too
         $_ =~ s/#.*$//;
+        # Keep in the map for relurl fixes
+        $map{ $orig } = $_;
         # Return
         $_;
     } grep {
@@ -155,6 +175,8 @@ sub enqueue_links {
         # Absolute (external) URLs
         !( $_ =~ m#^[a-z]+:# && $_ !~ m#$SRC# )
     } @links;
+
+    return %map;
 }
 
 $|=1;

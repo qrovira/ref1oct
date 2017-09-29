@@ -16,7 +16,7 @@ GetOptions(
     'src|s=s'         => \(my $SRC = 'https://onvotar.garantiespelreferendum.com'),
     'connections|n=i' => \(my $CONNECTIONS = 10),
     'verbose|v+'      => \(my $VERBOSE = 0),
-    'timeout|t=i'     => \(my $TIMEOUT = 5),
+    'timeout|t=i'     => \(my $TIMEOUT = 25),
     'only-hash|H'     => \(my $ONLY_HASH = 0),
 );
 
@@ -39,9 +39,10 @@ my $ok = 0;
 my $fail = 0;
 
 my $ua = Mojo::UserAgent->new
+    ->max_redirects(10)
     ->request_timeout($TIMEOUT)
     ->connect_timeout($TIMEOUT)
-    ->inactivity_timeout(1);
+    ->inactivity_timeout(5);
 
 sub process_response {
 	my ($ua, $tx) = @_;
